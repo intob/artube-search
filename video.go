@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"time"
+
+	"github.com/intob/artube-search/cache"
 )
 
 type Metadata struct {
@@ -59,10 +62,10 @@ func getMetadata(address, videoTxId string) (*Metadata, error) {
 }
 
 func indexVideo(txId string) error {
-	existing := store.Videos[txId]
-	if existing != nil && existing.LastIndexed.Add(indexThreshold).After(time.Now()) {
+	if !cache.ShouldIndex(txId) {
 		return fmt.Errorf("already indexed within threshold")
 	}
+
 	tx, err := client.GetTransactionByID(txId)
 	if err != nil {
 		return err
@@ -77,18 +80,16 @@ func indexVideo(txId string) error {
 		return fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	e := &Entry{
-		Keywords:    make([]string, 0),
-		LastServed:  time.Now(),
-		LastIndexed: time.Now(),
-	}
-	e.Keywords = getKeywords(metadata.Title)
-	e.Keywords = append(e.Keywords, getKeywords(metadata.Description)...)
+	return cache.IndexVideo(txId, metadata.Title, metadata.Description)
+}
 
-	if len(e.Keywords) == 0 {
-		return fmt.Errorf("no keywords above tfidf threshold, will not index")
+func calcAddress(owner string) (string, error) {
+	n, err := base64.RawURLEncoding.DecodeString(owner)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode owner: %w", err)
 	}
-	store.Videos[txId] = e
-
-	return nil
+	h := sha256.New()
+	h.Write(n)
+	sum := h.Sum(nil)
+	return base64.RawURLEncoding.EncodeToString(sum), nil
 }

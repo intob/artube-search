@@ -3,19 +3,18 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
 	"github.com/everFinance/goar"
-	"github.com/wilcosheh/tfidf"
-	"github.com/wilcosheh/tfidf/util"
+	"github.com/intob/artube-search/cache"
 )
 
 var (
 	listenAddr string
 	gateway    string
 	client     *goar.Client
-	model      *tfidf.TFIDF
 )
 
 func init() {
@@ -33,15 +32,6 @@ func init() {
 
 	client = goar.NewClient(gateway)
 
-	model = tfidf.New()
-	lines, err := util.ReadLines("./t8.shakespeare.txt")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	for _, l := range lines {
-		model.AddDocs(l)
-	}
 	fmt.Println("tfidf model ready")
 }
 
@@ -59,8 +49,13 @@ func handleFind(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	results := find(q)
-	resp, err := json.Marshal(results)
+	result, err := cache.Find(q)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("failed to query cache: %s", err)))
+		return
+	}
+	resp, err := json.Marshal(result)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("failed to marshal response: %s", err)))
@@ -95,4 +90,13 @@ func handleIndexChannel(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("indexing failed: %s", err)))
 	}
+}
+
+func getTxData(txId string) ([]byte, error) {
+	resp, err := http.DefaultClient.Get(fmt.Sprintf("%s/%s", gateway, txId))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
 }

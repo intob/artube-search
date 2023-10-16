@@ -3,7 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"time"
+
+	"github.com/intob/artube-search/cache"
 )
 
 type Channel struct {
@@ -55,27 +56,14 @@ func getChannel(address string) (*Channel, error) {
 }
 
 func indexChannel(addr string) error {
-	existing := store.Channels[addr]
-	if existing != nil && existing.LastIndexed.Add(indexThreshold).After(time.Now()) {
+	if !cache.ShouldIndex(addr) {
 		return fmt.Errorf("already indexed within threshold")
 	}
+
 	channel, err := getChannel(addr)
 	if err != nil {
 		return fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	e := &Entry{
-		Keywords:    make([]string, 0),
-		LastServed:  time.Now(),
-		LastIndexed: time.Now(),
-	}
-	e.Keywords = getKeywords(channel.Name)
-	e.Keywords = append(e.Keywords, getKeywords(channel.Description)...)
-
-	if len(e.Keywords) == 0 {
-		return fmt.Errorf("no keywords above tfidf threshold, will not index")
-	}
-	store.Channels[addr] = e
-
-	return nil
+	return cache.IndexChannel(addr, channel.Name, channel.Description)
 }
