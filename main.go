@@ -31,8 +31,6 @@ func init() {
 	fmt.Println("using gateway", gateway)
 
 	client = goar.NewClient(gateway)
-
-	fmt.Println("tfidf model ready")
 }
 
 func main() {
@@ -44,6 +42,7 @@ func main() {
 }
 
 func handleFind(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Access-Control-Allow-Origin", "*")
 	q := r.URL.Query().Get("q")
 	if q == "" {
 		w.WriteHeader(http.StatusNotFound)

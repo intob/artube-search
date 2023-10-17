@@ -14,7 +14,7 @@ type Metadata struct {
 	Description string `json:"description"`
 }
 
-func getMetadata(address, videoTxId string) (*Metadata, error) {
+func getMetadata(addr, videoTxId string) (*Metadata, error) {
 	resp, err := client.GraphQL(fmt.Sprintf(`
 	{
 		transactions(
@@ -41,7 +41,7 @@ func getMetadata(address, videoTxId string) (*Metadata, error) {
 			}
 		}
 	}
-	`, address, videoTxId))
+	`, addr, videoTxId))
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -59,6 +59,48 @@ func getMetadata(address, videoTxId string) (*Metadata, error) {
 	}
 	metadata := &Metadata{}
 	return metadata, json.Unmarshal(metadataResp, metadata)
+}
+
+func getPosterTxId(addr, videoTxId string) (string, error) {
+	resp, err := client.GraphQL(fmt.Sprintf(`
+	{
+		transactions(
+			owners: ["%s"]
+			tags: [
+				{
+					name: "App-Name",
+					values: ["artube"]
+				},
+				{
+					name: "Artube-Type",
+					values: ["poster"]
+				},
+				{
+					name: "Artube-Video",
+					values: ["%s"]
+				}
+			]
+		) {
+			edges {
+				node {
+					id
+				}
+			}
+		}
+	}
+	`, addr, videoTxId))
+	if err != nil {
+		return "", fmt.Errorf("query failed: %w", err)
+	}
+	result := &TxIdQueryResult{}
+	err = json.Unmarshal(resp, result)
+	if err != nil {
+		return "", fmt.Errorf("failed to unmarshal query result: %w", err)
+	}
+	if len(result.Txs.Edges) == 0 {
+		return "", fmt.Errorf("no poster tx found")
+	}
+	return result.Txs.Edges[0].Node.Id, nil
 }
 
 func indexVideo(txId string) error {
@@ -80,7 +122,16 @@ func indexVideo(txId string) error {
 		return fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	return cache.IndexVideo(txId, metadata.Title, metadata.Description)
+	posterTxId, err := getPosterTxId(addr, txId)
+	if err != nil {
+		return fmt.Errorf("failed to get posterTxId: %w", err)
+	}
+
+	return cache.IndexVideo(txId, &cache.VideoContent{
+		Title:       metadata.Title,
+		Description: metadata.Description,
+		PosterTxId:  posterTxId,
+	})
 }
 
 func calcAddress(owner string) (string, error) {

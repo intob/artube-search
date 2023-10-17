@@ -18,10 +18,23 @@ const (
 )
 
 type Entry struct {
-	Keywords    []string  `json:"-"`
-	LastIndexed time.Time `json:"-"`
-	Likes       int       `json:"likes"`
-	Type        string    `json:"type"`
+	Keywords    []string    `json:"-"`
+	LastIndexed time.Time   `json:"-"`
+	Content     interface{} `json:"content"`
+	Type        string      `json:"type"`
+}
+
+type VideoContent struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Likes       int    `json:"likes"`
+	PosterTxId  string `json:"posterTxId"`
+}
+
+type ChannelContent struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	AvatarTxId  string `json:"avatarTxId"`
 }
 
 type FindResult struct {
@@ -43,6 +56,7 @@ func init() {
 	if dir == "" {
 		dir = "/tmp/artube-search"
 	}
+	fmt.Println("cache dir", dir)
 
 	err := os.MkdirAll(dir, 0777)
 	if err != nil {
@@ -51,7 +65,7 @@ func init() {
 	}
 
 	model = tfidf.New()
-	lines, err := util.ReadLines("./t8.shakespeare.txt")
+	lines, err := util.ReadLines("assets/t8.shakespeare.txt")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -59,6 +73,10 @@ func init() {
 	for _, l := range lines {
 		model.AddDocs(l)
 	}
+	fmt.Println("tfidf model ready")
+
+	gob.Register(&VideoContent{})
+	gob.Register(&ChannelContent{})
 }
 
 func Find(query string) (*FindResult, error) {
@@ -109,14 +127,15 @@ func getKeywords(doc string) []string {
 	return words
 }
 
-func IndexVideo(txId, title, description string) error {
+func IndexVideo(txId string, content *VideoContent) error {
 	e := &Entry{
 		Keywords:    make([]string, 0),
 		LastIndexed: time.Now(),
+		Content:     content,
 		Type:        "video",
 	}
-	e.Keywords = getKeywords(title)
-	e.Keywords = append(e.Keywords, getKeywords(description)...)
+	e.Keywords = getKeywords(content.Title)
+	e.Keywords = append(e.Keywords, getKeywords(content.Description)...)
 
 	if len(e.Keywords) == 0 {
 		return fmt.Errorf("no keywords above tfidf threshold, will not index")
@@ -125,14 +144,15 @@ func IndexVideo(txId, title, description string) error {
 	return writeFile(txId, e)
 }
 
-func IndexChannel(addr, name, description string) error {
+func IndexChannel(addr string, content *ChannelContent) error {
 	e := &Entry{
 		Keywords:    make([]string, 0),
 		LastIndexed: time.Now(),
+		Content:     content,
 		Type:        "channel",
 	}
-	e.Keywords = getKeywords(name)
-	e.Keywords = append(e.Keywords, getKeywords(description)...)
+	e.Keywords = getKeywords(content.Name)
+	e.Keywords = append(e.Keywords, getKeywords(content.Description)...)
 
 	if len(e.Keywords) == 0 {
 		return fmt.Errorf("no keywords above tfidf threshold, will not index")
