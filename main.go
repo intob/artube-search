@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/everFinance/goar"
@@ -48,7 +49,13 @@ func handleFind(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	result, err := cache.Find(q)
+	unescapedQuery, err := url.QueryUnescape(q)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("failed to unescape query"))
+		return
+	}
+	result, err := cache.Find(unescapedQuery)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("failed to query cache: %s", err)))
